@@ -9,15 +9,42 @@ Script
 ----
 psql -U mateus rely
 ----
+CREATE TYPE message_status AS ENUM (
+    'PENDING',
+    'FAILED',
+    'RETRY'
+);
 CREATE TABLE rely (
     id BIGSERIAL PRIMARY KEY,
-    key VARCHAR(255) NOT NULL,
-    value VARCHAR(255) NOT NULL
+    topic VARCHAR(255) NOT NULL,
+    payload BYTEA NOT NULL,
+    codec VARCHAR(255) NOT NULL DEFAULT 'serializable',
+    status message_status NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    time_to_live INTEGER NOT NULL DEFAULT -1
 );
 
 ----
 BEGIN;
-INSERT INTO rely (key, value) VALUES ('config:theme', 'dark') RETURNING id;
+INSERT INTO rely (
+    topic,
+    payload,
+    codec,
+    status,
+    created_at,
+    updated_at,
+    time_to_live
+)
+VALUES (
+    'order.created',
+    convert_to('mateus', 'UTF8'),
+    'serializable',
+    'PENDING',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
+    3600
+);
 COMMIT;
 ----
 DROP TABLE rely;
@@ -28,10 +55,7 @@ RETURNS trigger AS $$
 BEGIN
     PERFORM pg_notify(
         'rely_changed',
-        json_build_object(
-            'operation', TG_OP,
-            'id', NEW.id
-        )::text
+        COALESCE(NEW.id)::text
     );
 
     RETURN NEW;
@@ -40,7 +64,7 @@ $$ LANGUAGE plpgsql;
 
 ---- Apply over table rely
 CREATE TRIGGER after_rely_changed
-AFTER INSERT OR UPDATE OR DELETE
+AFTER INSERT OR UPDATE
 ON rely
 FOR EACH ROW
 EXECUTE FUNCTION notify_rely_changes();
