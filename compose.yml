@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    shm_size: 128mb
+    volumes:
+      - postgres-data:/data
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: mateus
+      POSTGRES_PASSWORD: mateus
+      POSTGRES_DB: rely
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8001:8080
+
+volumes:
+  postgres-data:
+      driver: local
