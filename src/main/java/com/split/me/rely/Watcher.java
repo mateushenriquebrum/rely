@@ -77,17 +77,9 @@ public class Watcher {
     private void fireWorkersById(int[] ids) {
         try {
             String in = String.join(",", Arrays.stream(ids).mapToObj(String::valueOf).toList());
-            String query = "SELECT * FROM rely WHERE status not in ('COMPLETED', 'FAILED');";
+            String query = "SELECT id, topic, payload, invoked FROM rely WHERE status not in ('COMPLETED', 'FAILED');";
             LOG.info("Query to trigger listeners {}", query);
-            Statement statement = connection.createStatement();
-            ResultSet result = statement.executeQuery(query);
-            while (result.next()) {
-                Integer id = result.getInt("id");
-                String topic = result.getString("topic");
-                String payload = new String(result.getBytes("payload"), StandardCharsets.UTF_8);
-                LOG.info("Will dispatch to topic {}", topic);
-                new Worker(listeners, source).work(topic, payload, id);
-            }
+
         } catch (Exception e) {
             LOG.error("Error on dispatch to topics", e);
             throw new RuntimeException(e);
