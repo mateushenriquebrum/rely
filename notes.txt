@@ -8,11 +8,12 @@ mateus@mateus
 Script
 ----
 psql -U mateus rely
-----
+---- Script for rely
 CREATE TYPE message_status AS ENUM (
     'PENDING',
     'FAILED',
-    'RETRY'
+    'RETRY',
+    'COMPLETED'
 );
 CREATE TABLE rely (
     id BIGSERIAL PRIMARY KEY,
@@ -22,33 +23,9 @@ CREATE TABLE rely (
     status message_status NOT NULL DEFAULT 'PENDING',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    time_to_live INTEGER NOT NULL DEFAULT -1
+    time_to_live INTEGER NOT NULL DEFAULT -1,
+    invoked INTEGER NOT NULL DEFAULT 0
 );
-
-----
-BEGIN;
-INSERT INTO rely (
-    topic,
-    payload,
-    codec,
-    status,
-    created_at,
-    updated_at,
-    time_to_live
-)
-VALUES (
-    'order.created',
-    convert_to('mateus', 'UTF8'),
-    'serializable',
-    'PENDING',
-    CURRENT_TIMESTAMP,
-    CURRENT_TIMESTAMP,
-    3600
-);
-COMMIT;
-----
-DROP TABLE rely;
-
 ---- Create notification function
 CREATE OR REPLACE FUNCTION notify_rely_changes()
 RETURNS trigger AS $$
@@ -63,11 +40,59 @@ END;
 $$ LANGUAGE plpgsql;
 
 ---- Apply over table rely
-CREATE TRIGGER after_rely_changed
+CREATE TRIGGER after_rely_changes
 AFTER INSERT OR UPDATE
 ON rely
 FOR EACH ROW
+WHEN (NEW.status <> 'COMPLETED')
 EXECUTE FUNCTION notify_rely_changes();
+
+---- track update and invoke times
+CREATE OR REPLACE FUNCTION track_rely_changes()
+RETURNS trigger AS $$
+BEGIN
+    NEW.invoked := OLD.invoked + 1;
+    NEW.updated_at := CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_rely_changes
+BEFORE UPDATE
+ON rely
+FOR EACH ROW
+EXECUTE FUNCTION track_rely_changes();
+----
+BEGIN;
+INSERT INTO rely (
+    topic,
+    payload,
+    codec,
+    status,
+    created_at,
+    updated_at,
+    time_to_live
+)
+VALUES (
+    'rely.event',
+    convert_to('mateus', 'UTF8'),
+    'serializable',
+    'PENDING',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP,
+    3600
+), (
+       'rely.event',
+       convert_to('brum', 'UTF8'),
+       'serializable',
+       'PENDING',
+       CURRENT_TIMESTAMP,
+       CURRENT_TIMESTAMP,
+       3600
+   );
+COMMIT;
+----
+DROP TABLE rely;
 
 ---- List user defined function
 select n.nspname as function_schema,
